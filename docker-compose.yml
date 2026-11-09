@@ -27,6 +27,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    volumes:
+      - redis_data:/data
 
   worker:
     build: ./worker
@@ -90,3 +92,4 @@ networks:
 
 volumes:
   postgres_data:
+  redis_data:
