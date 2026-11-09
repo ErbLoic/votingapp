@@ -1,0 +1,64 @@
+services:
+  vote:
+    build: ./vote
+    ports:
+      - "8080:8080"
+    networks:
+      - vote-net
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    networks:
+      - vote-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  worker:
+    build: ./worker
+    networks:
+      - vote-net
+      - result-net
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres   # dev uniquement
+      POSTGRES_DB: postgres
+    networks:
+      - result-net
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  result:
+    build: ./result
+    ports:
+      - "8888:8888"
+    networks:
+      - result-net
+    depends_on:
+      db:
+        condition: service_healthy
+
+networks:
+  vote-net:
+  result-net:
+
+volumes:
+  postgres_data:
