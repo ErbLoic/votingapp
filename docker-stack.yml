@@ -1,0 +1,114 @@
+services:
+  vote:
+    image: 127.0.0.1:5000/voting-vote:1.0
+    ports:
+      - "8080:8080"
+    environment:
+      REDIS_HOST: redis
+    networks:
+      - vote-net
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8080')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - vote-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+
+  worker:
+    image: 127.0.0.1:5000/voting-worker:1.1
+    environment:
+      REDIS_HOST: redis
+      DB_HOST: db
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD_FILE: /run/secrets/db_password
+      DB_NAME: ${POSTGRES_DB}
+    secrets:
+      - db_password
+    networks:
+      - vote-net
+      - result-net
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      POSTGRES_DB: ${POSTGRES_DB}
+    secrets:
+      - db_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - result-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+
+  result:
+    image: 127.0.0.1:5000/voting-result:1.1
+    ports:
+      - "8888:8888"
+    environment:
+      DB_HOST: db
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD_FILE: /run/secrets/db_password
+      DB_NAME: ${POSTGRES_DB}
+    secrets:
+      - db_password
+    networks:
+      - result-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8888"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+networks:
+  vote-net:
+    driver: overlay
+  result-net:
+    driver: overlay
+
+volumes:
+  postgres_data:
+  redis_data:
+
+secrets:
+  db_password:
+    external: true
